@@ -1,0 +1,83 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head><meta charset="UTF-8"><title>简化版停车系统</title></head>
+<body style="font-family:sans-serif;padding:20px;max-width:900px;margin:0 auto">
+
+<h2>智慧停车收费系统</h2>
+
+<h3>车辆入场</h3>
+车牌: <select id="prov"></select> <input id="plate" placeholder="A12345" maxlength="6" style="width:140px">
+<select id="type"><option value="car">小型车</option><option value="suv">SUV</option><option value="truck">货车</option><option value="motor">摩托车</option></select>
+<button onclick="enterCar()">确认入场</button>
+
+<h3>在场车辆 <button onclick="load()">刷新</button></h3>
+<table border="1" cellpadding="6" style="border-collapse:collapse;width:100%">
+<thead><tr><th>ID</th><th>车牌</th><th>车型</th><th>入场时间</th><th>已停</th><th>操作</th></tr></thead>
+<tbody id="activeBody"></tbody>
+</table>
+
+<h3>收费记录</h3>
+<table border="1" cellpadding="6" style="border-collapse:collapse;width:100%">
+<thead><tr><th>车牌</th><th>入场</th><th>离场</th><th>金额</th></tr></thead>
+<tbody id="historyBody"></tbody>
+</table>
+
+<div id="msg" style="color:red;margin-top:10px"></div>
+
+<script>
+var provinces=['京','津','冀','晋','蒙','辽','吉','黑','沪','苏','浙','皖','闽','赣','鲁','豫','鄂','湘','粤','桂','琼','渝','川','贵','云','藏','陕','甘','青','宁','新'];
+var p=document.getElementById('prov');
+provinces.forEach(function(x,i){p.innerHTML+='<option value="'+x+'">'+x+'</option>';});
+
+function load(){
+  document.getElementById('msg').textContent='加载中...';
+  Promise.all([
+    fetch('/api/active').then(function(r){return r.json();}),
+    fetch('/api/history').then(function(r){return r.json();})
+  ]).then(function(r){
+    document.getElementById('msg').textContent='加载成功 '+(r[0].data||[]).length+' 辆在场';
+    var active=r[0].data||[],hist=r[1].data||[];
+    document.getElementById('activeBody').innerHTML=active.map(function(x){
+      var dur=(Date.now()-new Date(x.entry_time).getTime())/3600000;
+      var ds=dur<1?Math.round(dur*60)+'分钟':Math.floor(dur)+'h'+Math.round((dur-Math.floor(dur))*60)+'m';
+      return'<tr><td>'+x.id+'</td><td>'+x.plate+'</td><td>'+x.type+'</td><td>'+new Date(x.entry_time).toLocaleString()+'</td><td>'+ds+'</td><td><button onclick="checkout(\''+x.plate+'\')">结算</button></td></tr>';
+    }).join('')||'<tr><td colspan="6">无在场车辆</td></tr>';
+    document.getElementById('historyBody').innerHTML=hist.reverse().slice(0,20).map(function(x){
+      return'<tr><td>'+x.plate+'</td><td>'+new Date(x.entry_time).toLocaleString()+'</td><td>'+new Date(x.exit_time).toLocaleString()+'</td><td>¥'+Number(x.fee).toFixed(2)+'</td></tr>';
+    }).join('')||'<tr><td colspan="4">无记录</td></tr>';
+  }).catch(function(e){
+    document.getElementById('msg').textContent='连接失败: '+e.message+' —— 请确认 node server.js 在3000端口运行';
+  });
+}
+
+function enterCar(){
+  var fp=p.value+document.getElementById('plate').value.toUpperCase();
+  var tp=document.getElementById('type').value;
+  if(!fp||fp.length<3)return alert('请输入车牌');
+  document.getElementById('msg').textContent='入场中...';
+  fetch('/api/enter',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({plate:fp,type:tp})})
+    .then(function(r){return r.json();}).then(function(res){
+    if(res.ok){document.getElementById('plate').value='';load();}
+    document.getElementById('msg').textContent=res.msg;
+  }).catch(function(e){document.getElementById('msg').textContent='失败: '+e.message;});
+}
+
+function checkout(plate){
+  document.getElementById('msg').textContent='结算中...';
+  fetch('/api/checkout',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({plate:plate})})
+    .then(function(r){return r.json();}).then(function(res){
+    if(!res.ok){document.getElementById('msg').textContent=res.msg;return;}
+    var d=res.data;
+    if(confirm(plate+' 停车费 ¥'+d.fee.toFixed(2)+'\n确认收款?')){
+      fetch('/api/confirm',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({plate:plate,fee:d.fee,exitTime:d.exitTime})})
+        .then(function(r){return r.json();}).then(function(res2){
+        document.getElementById('msg').textContent=res2.msg;load();
+      });
+    }
+  }).catch(function(e){document.getElementById('msg').textContent='失败: '+e.message;});
+}
+
+load();
+setInterval(load,10000);
+</script>
+</body></html>

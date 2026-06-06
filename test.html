@@ -1,0 +1,22 @@
+<!DOCTYPE html>
+<html><head><meta charset="UTF-8"><title>API测试</title></head>
+<body>
+<h2>API连接测试</h2>
+<button onclick="test()" style="font-size:20px;padding:10px 30px">点击测试API</button>
+<pre id="out" style="background:#f5f5f5;padding:20px;margin-top:10px;min-height:200px;white-space:pre-wrap"></pre>
+<script>
+var out=document.getElementById('out');
+out.textContent='准备就绪…\n页面加载时间: '+new Date().toLocaleTimeString();
+function test(){
+  out.textContent='正在请求 /api/active …';
+  fetch('/api/active').then(function(r){
+    out.textContent+='\n状态码: '+r.status;
+    return r.json();
+  }).then(function(d){
+    out.textContent+='\n响应数据:\n'+JSON.stringify(d,null,2);
+  }).catch(function(e){
+    out.textContent+='\n请求失败: '+e.message+'\n请确认后端已启动(http://localhost:3000)';
+  });
+}
+</script>
+</body></html>
